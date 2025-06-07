@@ -1,5 +1,6 @@
 from youtube_transcript_api import YouTubeTranscriptApi
 from yt_dlp import YoutubeDL
+import re
 import config
 import utils
 
@@ -127,8 +128,22 @@ def save_to_csv(csv_text, new_link, filename="AI_News.csv"):
             writer.writerows(csv_text)
 '''
 
+def get_base_url(url):
+    # This regex grabs the main video URL without the timestamp
+    match = re.search(r'v=([a-zA-Z0-9]+)', url)
+    if match:
+        return match.group(1)
+    # fallback if regex doesn't match
+    return url
+
 def main(video_id):
     video_url = f"https://www.youtube.com/watch?v={video_id}"
+    cl_basesave = utils.BaseSave(config.YOUTUBE_SHEET)
+
+    existing_data_set = cl_basesave.get_existing_data_set(fn_get_base_url=get_base_url)
+    if video_id in existing_data_set:
+        print(f"Duplicate link found {video_url}, skipping...")
+        return
 
     info = get_youtube_info(video_url)
     title, chapters, date = info.get('title'), info.get('chapters'), info.get('upload_date')
@@ -148,5 +163,5 @@ def main(video_id):
     chapters_transcript = group_transcript_by_chapters(transcript=full_transcript, chapters=chapters)
 
     data = finalize_data(date=date, transcript=chapters_transcript, url=video_url, title=title, chapters=chapters)
-    
-    utils.YoutubeSave(sheet_name=config.YOUTUBE_SHEET).duplicated_or_save(data)
+
+    cl_basesave.save_to_google_sheets(data)

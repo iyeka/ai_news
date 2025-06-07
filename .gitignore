@@ -1,3 +1,5 @@
 env/
 .env
+
+# for Google api
 credentials.json

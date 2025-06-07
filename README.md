@@ -10,35 +10,27 @@
 
 ```text
 📁 project_root/
-├── main.py                     ← The script that runs everything
-├── .env                        ← Configuration for API keys, sheet IDs, etc.
-├── requirements.txt            ← Python dependencies
+├── main.ipynb                          ← The script that runs everything
+├── .env                                ← Private variables
+├── requirements.txt                    ← Python dependencies
 │
-├── youtube/                    ← Folder for YouTube-related code
+├── config/                             ← Folder for YouTube-related code
 │   ├── __init__.py
-│   ├── youtube_to_google_sheets.py
-│   │   ├── def get_script
-│   │   ├── def get_chapters
-│   │   ├── def group_transcript_by_chapters
-│   │   ├── def summarize as csv row
-│   │   ├── def merge csv text
-│   │   ├── def save to google sheet with duplication check
-│
-├── crewai_agent/               ← Folder for CrewAI-related code
-│   ├── __init__.py
-│   ├── search_channels.py      ← Search for useful X and Discord channels based on my recommendation.
-│   ├── curate.py               ← curate useful posts
+│   ├── config.py                       ← Configuration for API and sheet settings
 │
 ├── communities/
-│   ├── __init__.py
-│   ├── get_posts.py
-│   │   ├── X                   ← username: @levelsio and @kepano
-│   │   ├── Reddit              ← hot posts from r/AIUseCases, r/SideProject, r/Entrepreneur (AI business discussions), r/OpenAI, r/LocalLLaMA
-│   │   ├── Discord
-│   │   ├── HackerNews          ← "Show HN" posts
+│   ├── youtube.py
+│   │   ├── def fetch_data
+│   │   ├── def AI_summarization
+│   ├── x.py                            ← get posts by username
+│   ├── reddit.py                       ← hot posts from subreddits
+│   ├── threads.py                      ← timeline posts
+│   ├── geeknews.py                     ← https://news.hada.io/
 │
-├── utils/                      ← Shared utilities
-│   ├── __init__.py
-│   ├── gsheet_writer.py        ← Functions to write data to Google Sheets
-│   ├── openai_summariser.py    ← Function that sends content to OpenAI
+├── utils/                              ← Shared utilities
+│   ├── save.py
+│   │   ├── def save_to_google_sheets
+│   │   ├── def showing_on_streamlit    ← It can be replaced with Nicegui
+│   ├── modify_data.py
+│
 ```
