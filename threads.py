@@ -1,8 +1,8 @@
 import feedparser
-import time
+import asyncio
 import json
-from playwright.sync_api import sync_playwright
 from pathlib import Path
+from playwright.sync_api import sync_playwright
 
 rss_login_url = "https://rss.app/signin"
 rss_generator_url = "https://rss.app/new-rss-feed"
@@ -25,22 +25,25 @@ def get_rss_urls(username):
     rss_urls = []
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        context = (
-            browser.new_context(storage_state=load_cookies())
-            if Path(cookie_file).exists()
-            else browser.new_context()
-        )
-        page = context.new_page()
+        if Path(cookie_file).exists():
+            print("Login info found!")
+            browser = p.chromium.launch()
+            context = browser.new_context(storage_state=load_cookies())
+            page = context.new_page()
+        else:
+            browser = p.chromium.launch(headless=False)
+            context = browser.new_context()
+            page = context.new_page()
 
-        # If cookies don't exist, login manually once
-        if not Path(cookie_file).exists():
+            # If cookies don't exist, login manually once
             page.goto(rss_login_url)
             input("log in manually, then press Enter here.")
             save_cookies(context)
 
         profile_url = f"https://www.threads.net/@{username}"
         page.goto(rss_generator_url)
+        print("fetching urls... please wait.")
+
         page.locator("input.MuiAutocomplete-input").wait_for()
         page.fill("input.MuiAutocomplete-input", profile_url)
         page.click("button[type='submit']")
