@@ -3,3 +3,6 @@ env/
 
 # for Google api
 credentials.json
+
+# Threads RSS
+rss_app_cookies.json
