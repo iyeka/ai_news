@@ -1,65 +1,80 @@
-import feedparser
+import config
+from typing import Iterable
 import asyncio
 import json
 from pathlib import Path
-from playwright.sync_api import sync_playwright
+from playwright.async_api import async_playwright
+import feedparser
 
-rss_login_url = "https://rss.app/signin"
-rss_generator_url = "https://rss.app/new-rss-feed"
+class rss_generator():
+    def __init__(self):
+        self.cookie_file = "rss_app_cookies.json"
 
-cookie_file = "rss_app_cookies.json"
-usernames = ["choi.openai", "bocchi.ai", "mock_jokerbug", "ymzinvest", "obj.moss", "smilegoodthings", "quady.openai", "cuticogent", "anelo_96", "heo_intern", "aiowner_"]
+    async def save_cookies(self, context):
+        cookies = await context.storage_state()
+        with open(self.cookie_file, "w") as file:
+            json.dump(cookies, file)
 
-def save_cookies(context):
-    cookies = context.storage_state()
-    with open(cookie_file, "w") as file:
-        json.dump(cookies, file)
+    async def load_cookies(self):
+        if Path(self.cookie_file).exists():
+            with open(self.cookie_file) as file:
+                return json.load(file)
+        return None
 
-def load_cookies():
-    if Path(cookie_file).exists():
-        with open(cookie_file) as file:
-            return json.load(file)
-    return None
+    async def get_rss_urls(self, usernames:Iterable) -> list:
+        rss_urls = []
 
-def get_rss_urls(username):
-    rss_urls = []
+        async with async_playwright() as p:
+            if Path(self.cookie_file).exists():
+                print("Login info found!")
+                browser = await p.chromium.launch()
+                context = await browser.new_context(storage_state=await self.load_cookies())
+                page = await context.new_page()
+            else:
+                browser = await p.chromium.launch(headless=False)
+                context = await browser.new_context()
+                page = await context.new_page()
 
-    with sync_playwright() as p:
-        if Path(cookie_file).exists():
-            print("Login info found!")
-            browser = p.chromium.launch()
-            context = browser.new_context(storage_state=load_cookies())
-            page = context.new_page()
-        else:
-            browser = p.chromium.launch(headless=False)
-            context = browser.new_context()
-            page = context.new_page()
+                # If cookies don't exist, login manually once
+                await page.goto(config.rss_login_url)
+                input("log in manually, then press Enter here.")
+                await self.save_cookies(context)
 
-            # If cookies don't exist, login manually once
-            page.goto(rss_login_url)
-            input("log in manually, then press Enter here.")
-            save_cookies(context)
+            for username in usernames:
+                profile_url = f"https://www.threads.net/@{username}"
+                await page.goto(config.rss_generator_url)
 
-        profile_url = f"https://www.threads.net/@{username}"
-        page.goto(rss_generator_url)
-        print("fetching urls... please wait.")
+                await page.locator("input.MuiAutocomplete-input").fill(profile_url)
+                await page.click("button[type='submit']")
+                print(f"making url for {username}... please wait.")
 
-        page.locator("input.MuiAutocomplete-input").wait_for()
-        page.fill("input.MuiAutocomplete-input", profile_url)
-        page.click("button[type='submit']")
-
-        generate_rss_url = page.get_by_role("button", name="Save Feed")
-        generate_rss_url.wait_for()
-        generate_rss_url.click()
+                await page.get_by_role("button", name="Save Feed").click()
+                
+                rss_url = await page.locator("input.Mui-readOnly").get_attribute("value")
+                rss_urls.append(rss_url)
+            
+            await browser.close()
         
-        rss_url_input = page.locator("input.Mui-readOnly")
-        rss_url_input.wait_for()
-        rss_url = rss_url_input.get_attribute("value")
+        return rss_urls
 
-        rss_urls.append(rss_url)
-        
-        browser.close()
-    
-    return rss_urls
+def get_posts(urls:list) -> list[dict]:
+    posts=[]
 
-print(get_rss_urls("choi.openai"))
+    for url in urls:
+        print(f"parsing {url}...")
+        feed = feedparser.parse(url)
+        for entry in feed.entries:
+            post = dict(
+            date = entry.get("published"),
+            author = entry.get("author"),
+            content = entry.get("summary"),
+            link = entry.get("link"),
+            )
+            posts.append(post)
+
+    return posts
+
+usernames = ["choi.openai", "obj.moss"]
+def main(usernames):
+    urls = asyncio.run(rss_generator().get_rss_urls(usernames))
+    posts = get_posts(urls)

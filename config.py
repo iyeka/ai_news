@@ -47,3 +47,7 @@ reddit = praw.Reddit(
     client_secret=client_secret,
     user_agent=user_agent,
 )
+
+# Threads settings
+rss_login_url = "https://rss.app/signin"
+rss_generator_url = "https://rss.app/new-rss-feed"
