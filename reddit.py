@@ -1,26 +1,28 @@
 import config
 import utils
 import re
+from typing import Iterable
 from datetime import datetime
 
 def get_base_url(url):
     match = re.search(r'/gallery/([a-z0-9]+)', url)
     return match.group(1)
 
-def get_posts(community, limit=5):
+def get_posts(communities:Iterable, limit=5):
     posts = []
-    subreddit = config.reddit.subreddit(community)
-    for submission in subreddit.hot(limit=limit):
-        text_or_not = submission.is_self
-        unix_timestamp = submission.created_utc
-        dictionary = dict(
-            date = datetime.fromtimestamp(unix_timestamp).isoformat(),
-            community = f"r/{community}",
-            title = submission.title,
-            content = submission.selftext,
-            link = f"https://www.reddit.com/gallery/{submission.id}",
-        )
-        posts.append(dictionary)
+    for community in communities:
+        subreddit = config.reddit.subreddit(community)
+        for submission in subreddit.hot(limit=limit):
+            text_or_not = submission.is_self
+            unix_timestamp = submission.created_utc
+            dictionary = dict(
+                date = datetime.fromtimestamp(unix_timestamp).isoformat(),
+                community = f"r/{community}",
+                title = submission.title,
+                content = submission.selftext,
+                link = f"https://www.reddit.com/gallery/{submission.id}",
+            )
+            posts.append(dictionary)
 
     return posts
     

@@ -61,24 +61,16 @@ class BaseSave:
                 data.append(post)
         return data
 
-    def duplicated_or_save(self, keywords, fn_get_posts: Callable, fn_get_base_url: Optional[Callable] = None):
-        cl_preparedata = PrepareData()
-        existing_data_set = self.get_existing_data_set(fn_get_base_url=fn_get_base_url)
+    def duplicated_or_save(self, keywords: Iterable, fn_get_posts: Callable, fn_get_base_url: Optional[Callable] = None):
+        existing_data_set = self.get_existing_data_set(fn_get_base_url)
 
-        posts = cl_preparedata.get_multiple_users_posts(keywords=keywords, fn_get_posts=fn_get_posts)
+        posts = fn_get_posts(keywords)
         unduplicated_posts = self.duplicated_check(existing_data_set=existing_data_set, new_data=posts, fn_get_base_url=fn_get_base_url)
 
-        data = cl_preparedata.finalize_data(unduplicated_posts)
+        data = gsheets_format(unduplicated_posts)
         self.save_to_google_sheets(data)
 
-class PrepareData:
-    def get_multiple_users_posts(self, keywords: Iterable, fn_get_posts:Callable):
-        posts = []
-        for keyword in keywords:
-            posts.extend(fn_get_posts(keyword))
-        return posts
-
-    def finalize_data(self, posts: list[dict]):
+def gsheets_format(posts: list[dict]):
         memory = io.StringIO()
         writer = csv.DictWriter(memory, fieldnames=posts[0].keys())
         writer.writerows(posts)
