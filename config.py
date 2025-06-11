@@ -20,7 +20,6 @@ CREDENTIALS_FILE = 'credentials.json'
 
 SPREADSHEET_ID = '1qr_CluX6H4sUEfHwbntpRhj4kj2ldTaCENN00IT-8rg'
 YOUTUBE_SHEET = 'youtube'
-THREADS_SHEET = 'threads'
 X_SHEET = 'x'
 REDDIT_SHEET = 'reddit'
 
@@ -48,3 +47,7 @@ reddit = praw.Reddit(
     client_secret=client_secret,
     user_agent=user_agent,
 )
+
+# Threads settings
+rss_login_url = "https://rss.app/signin"
+rss_generator_url = "https://rss.app/new-rss-feed"
