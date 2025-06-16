@@ -47,11 +47,12 @@ class BaseSave:
         for row in rows:
             indexed_row = row[header_index]
             base_url = fn_get_base_url(indexed_row) if fn_get_base_url else indexed_row
-            existing_data_set.add(base_url) if base_url else indexed_row
+            existing_data_set.add(base_url)
         return existing_data_set
     
-    def duplicated_check(self, existing_data_set, new_data:list[dict], fn_get_base_url: Optional[Callable] = None):
+    def duplicated_check(self, new_data:list[dict], fn_get_base_url: Optional[Callable] = None):
         data = []
+        existing_data_set = self.get_existing_data_set(fn_get_base_url=fn_get_base_url)
         for post in new_data:
             url = post.get('link')
             base_url = fn_get_base_url(url)
@@ -62,21 +63,23 @@ class BaseSave:
         return data
 
     def duplicated_or_save(self, keywords: Iterable, fn_get_posts: Callable, fn_get_base_url: Optional[Callable] = None):
-        existing_data_set = self.get_existing_data_set(fn_get_base_url)
-
         posts = fn_get_posts(keywords)
-        unduplicated_posts = self.duplicated_check(existing_data_set=existing_data_set, new_data=posts, fn_get_base_url=fn_get_base_url)
+        unduplicated_posts = self.duplicated_check(new_data=posts, fn_get_base_url=fn_get_base_url)
 
+        if not unduplicated_posts:
+            print("There are no datas to update.")
+            return
+        
         data = gsheets_format(unduplicated_posts)
         self.save_to_google_sheets(data)
 
 def gsheets_format(posts: list[dict]):
-        memory = io.StringIO()
-        writer = csv.DictWriter(memory, fieldnames=posts[0].keys())
-        writer.writerows(posts)
+    memory = io.StringIO()
+    writer = csv.DictWriter(memory, fieldnames=posts[0].keys())
+    writer.writerows(posts)
 
-        memory.seek(0) # cursor back to the first line.
-        reader = csv.reader(memory)
-        rows = [row for row in reader]
+    memory.seek(0) # cursor back to the first line.
+    reader = csv.reader(memory)
+    rows = [row for row in reader]
 
-        return rows
+    return rows
