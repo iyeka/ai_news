@@ -1,13 +1,18 @@
 from typing import Iterable, Callable, Optional
+import inspect
+import logging
 import config
 import csv
 import io
+
+config.setup_logger()
 
 class BaseSave:
     def __init__(self, sheet_name):
         self.sheet = config.setup_google_sheets_api()
         self.sheet_id = config.SPREADSHEET_ID
         self.sheet_name = sheet_name
+        logging.debug(f"Google Sheets API is setup with {self.sheet_name}")
 
     def save_to_google_sheets(self, new_data:list[dict]):
         body = {
@@ -38,32 +43,42 @@ class BaseSave:
         existing_data = result.get('values', ())
         return existing_data
         
-    def get_existing_data_set(self, column_header="Link", fn_get_base_url: Optional[Callable] = None):
+    def get_rows_by_column_header(self, column_header="Link") -> list:
         existing_data = self.get_data_from_google_sheets()
         header = existing_data[0]
         rows = existing_data[1:]
         header_index = header.index(column_header)
-        existing_data_set = set()
-        for row in rows:
-            indexed_row = row[header_index]
-            base_url = fn_get_base_url(indexed_row) if fn_get_base_url else indexed_row
-            existing_data_set.add(base_url)
-        return existing_data_set
+        return [row[header_index] for row in rows]
     
-    def duplicated_check(self, new_data:list[dict], fn_get_base_url: Optional[Callable] = None):
+    def duplicated_check(self, new_data:list[dict], fn_get_base_url: Optional[Callable]):
         data = []
-        existing_data_set = self.get_existing_data_set(fn_get_base_url=fn_get_base_url)
+        existing_data = self.get_rows_by_column_header()
+        logging.debug(f"fetching {len(existing_data)} existing rows.")
+        existing_data_set = set()
+        for link in existing_data:
+            base_url = fn_get_base_url(link)
+            logging.debug(f"{base_url} is extracted from {link}.")
+            existing_data_set.add(base_url)
+
         for post in new_data:
-            url = post.get('link')
-            base_url = fn_get_base_url(url)
+            link = post.get('link')
+            logging.debug(f"Link key value '{link}' is found from the new_data.")
+            base_url = fn_get_base_url(link)
+            logging.debug(f"{base_url} is extracted from the the link.")
             if base_url in existing_data_set:
-                print(f"Duplicate data found {url}, skipping...")
+                print(f"Duplicate data found {link}, skipping...")
             else:
                 data.append(post)
         return data
 
-    def duplicated_or_save(self, keywords: Iterable, fn_get_posts: Callable, fn_get_base_url: Optional[Callable] = None):
-        posts = fn_get_posts(keywords)
+    async def duplicated_or_save(self, keywords: Iterable, fn_get_posts: Callable, fn_get_base_url: Optional[Callable]):
+        get_posts = fn_get_posts(keywords)
+        
+        if inspect.iscoroutine(get_posts):
+            posts = await get_posts
+        else:
+            posts = get_posts
+        
         unduplicated_posts = self.duplicated_check(new_data=posts, fn_get_base_url=fn_get_base_url)
 
         if not unduplicated_posts:

@@ -1,114 +1,106 @@
 import re
 import utils
 import config
-import json
-import feedparser
+import logging
 from typing import Iterable
-from pathlib import Path
-from playwright.async_api import async_playwright, expect, TimeoutError
-from bs4 import BeautifulSoup
+from playwright.async_api import async_playwright
 
-class rss_generator():
-    def __init__(self):
-        self.cookie_file = "rss_app_cookies.json"
-        self.rss_login_url = "https://rss.app/signin"
-        self.rss_generator_url = "https://rss.app/new-rss-feed"
-        self.myfeeds = "https://rss.app/myfeeds"
+config.setup_logger()
 
-    async def save_cookies(self, context):
-        cookies = await context.storage_state()
-        with open(self.cookie_file, "w") as file:
-            json.dump(cookies, file)
+def extract_user_text(text:str) -> str:
+    lines = text.split("\n")
 
-    async def load_cookies(self):
-        if Path(self.cookie_file).exists():
-            with open(self.cookie_file) as file:
-                return json.load(file)
-        return None
+    # Find the index of the date line (format: dd/dd/dd)
+    date_index = None
+    # e.g. 04/17/25, 3d, 12d, 3h, 10h, 5m, 30m
+    date_pattern = re.compile(r"^(?:\d{2}/\d{2}/\d{2}|\d+d|\d+h|\d+m)$")
 
-    async def get_rss_urls(self, usernames:Iterable) -> list:
-        rss_urls = []
+    for i, line in enumerate(lines):
+        if date_pattern.match(line.strip()):
+            date_index = i
+            break
 
-        async with async_playwright() as p:
-            if Path(self.cookie_file).exists():
-                print("Login info found!")
-                browser = await p.chromium.launch()
-                context = await browser.new_context(storage_state=await self.load_cookies())
-                page = await context.new_page()
-            else:
-                browser = await p.chromium.launch(headless=False)
-                context = await browser.new_context()
-                page = await context.new_page()
-
-                # If cookies don't exist, login manually once
-                await page.goto(self.rss_login_url)
-                input("log in manually, then press Enter here.")
-                await self.save_cookies(context)
-
-            for username in usernames:
-                profile_url = f"https://www.threads.net/@{username}"
-                await page.goto(self.rss_generator_url)
-
-                search_input = page.locator("input.MuiAutocomplete-input")
-                await search_input.fill(profile_url)
-                await expect(search_input).to_have_value(profile_url)
-
-                await page.click("button[type='submit']")
-                print(f"making url for {username}... please wait.")
-
-                try:
-                    await page.get_by_role("button", name="Save Feed").click()
-                except TimeoutError:
-                    alert = page.locator("div.MuiAlert-message")
-                    if await alert.is_visible():
-                        print(alert.text_content())
-                        break
-
-                rss_url = await page.locator("input.Mui-readOnly").get_attribute("value")
-                rss_urls.append(rss_url)
-                
-            await browser.close()
-        
-        return rss_urls
+    if date_index is None:
+        logging.warning(f"Date data is not found in the post. So the full inner_text '''{text}''' of the post will be return.")
+        return text
     
-    async def delete_feed(self):
-        async with async_playwright() as p:
-            browser = await p.chromium.launch()
-            context = await browser.new_context(storage_state=await self.load_cookies())
-            page = await context.new_page()
+    # Find the index of the "Translate" line
+    translate_index = None
+    for i, line in enumerate(lines):
+        if line.strip() == "Translate":
+            translate_index = i
+            break
 
-            await page.goto(self.myfeeds)
-            await page.click("button[ga='feed-menu]")
-            await page.click("li[ga='menu-delete-feed']")
+    if translate_index is None:
+        logging.warning(f"User posting text is not found in the post. So the full inner_text '''{text}''' of the post will be return.")
+        return text
+    
+    userlines = lines[date_index+1 : translate_index]
+    return " ".join(userlines).strip()
+    
 
-            await browser.close()
+async def get_posts(username):
+    url = f"https://www.threads.net/@{username}"
 
-def get_posts(urls:list) -> list[dict]:
-    def extract_text(html):
-            soup = BeautifulSoup(html, "html.parser")
-            text = soup.get_text(separator=" ", strip=True)
-            return text.replace("\n", " ")
+    results = []
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=True)
+        context = await browser.new_context(user_agent=(
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/114.0 Safari/537.36"
+        ))
+        page = await context.new_page()
 
-    posts=[]
-    for url in urls:
-        print(f"parsing {url}...")
-        feed = feedparser.parse(url)
-        for entry in feed.entries:
+        await page.goto(url)
+        logging.debug("Get access to the {url}")
+        await page.wait_for_selector('div[data-pressable-container="true"]')
+        post_blocks = await page.query_selector_all('div[data-pressable-container="true"]')
+        logging.info(f"🧵 {len(post_blocks)} posts found.")
+
+        for post in post_blocks:
+            text = await post.inner_text()
+            user_text = extract_user_text(text)
+            logging.info("Successfully extracted user posting text.")
+            
+            # starts with /@ and contains /post/
+            link_line = await post.query_selector('a[href^="/@"][href*="/post/"]')
+            href = await link_line.get_attribute("href")
+            logging.debug(f"Successfully extracted href {href} from {link_line}.")
+            full_link = f"https://www.threads.net{href}"
+
+            date_line = await post_blocks[0].query_selector("time")
+            date = await date_line.get_attribute("datetime")
+            logging.debug(f"Successfully extracted {date} from {date_line}.")
+
             post = dict(
-            date = entry.get("published"),
-            author = entry.get("author"),
-            content = extract_text(entry.get("summary")),
-            link = entry.get("link"),
+            date = date,
+            author = f"@{username}",
+            content = user_text,
+            link = full_link,
             )
-            posts.append(post)
+            logging.debug(f"This is the post. \n{post}")
 
-    return posts
+            results.append(post)
+
+        await browser.close()
+
+    return results
+
+async def get_multiple_users_posts(users: Iterable):
+    results = []
+    for user in users:
+        logging.info(f"📥 Fetching posts from: {user}")
+        posts = await get_posts(user)
+        results.extend(posts)
+    logging.info(f"{len(results)} posts are found.")
+    return results
 
 def get_base_url(url):
     match = re.search(r'/post/([a-zA-Z0-9_-]+)', url)
+    logging.debug(f"matched post, {match} found.")
     return match.group(1)
 
-async def main(users):
-    urls = await rss_generator().get_rss_urls(users)
-    utils.BaseSave(sheet_name=config.THREADS_SHEET).duplicated_or_save(urls, get_posts, get_base_url)
-    await rss_generator().delete_feed()
+async def main(users: Iterable):
+    basesave = utils.BaseSave(sheet_name=config.THREADS_SHEET)
+    await basesave.duplicated_or_save(users, get_multiple_users_posts, get_base_url)

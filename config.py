@@ -1,5 +1,6 @@
 import os
 import praw
+import logging
 from dotenv import load_dotenv
 from openai import OpenAI
 from googleapiclient.discovery import build
@@ -7,6 +8,13 @@ from google.oauth2 import service_account
 
 # Load variables from .env into environment
 load_dotenv()
+
+# Logging Config
+def setup_logger():
+    logging.basicConfig(
+        level=logging.WARNING, # Minimum level to show
+        format="%(asctime)s [%(levelname)s] %(message)s"
+)
 
 # OpenAI settings
 OPENAI_MODEL_NAME="gpt-4o-mini"
